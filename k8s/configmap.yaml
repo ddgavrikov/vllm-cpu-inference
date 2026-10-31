@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+data:
+  MODEL_ID: Qwen/Qwen2.5-0.5B-Instruct
+  MODEL_REVISION: 7ae557604adf67be50417f59c2c2f167def9a775
+  VLLM_CPU_KVCACHE_SPACE: "1"
+  VLLM_CPU_OMP_THREADS_BIND: nobind
+  OMP_NUM_THREADS: "2"
+  server.json: |
+    {
+      "served-model-name": "qwen-cpu",
+      "dtype": "float32",
+      "max-model-len": 2048,
+      "max-num-seqs": 4,
+      "max-num-batched-tokens": 2048,
+      "enforce-eager": true,
+      "enable-prefix-caching": false,
+      "enable-chunked-prefill": true
+    }

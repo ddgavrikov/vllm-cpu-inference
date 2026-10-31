@@ -1,0 +1,7 @@
+.git
+__pycache__
+tests
+results
+*.zip
+.env
+secrets.env

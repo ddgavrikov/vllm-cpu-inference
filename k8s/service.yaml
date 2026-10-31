@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm
+spec:
+  type: ClusterIP
+  selector:
+    app: llm
+  ports:
+    - {name: http, port: 8000, targetPort: http}

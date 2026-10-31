@@ -1,0 +1,63 @@
+name: verify-cpu
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpu-kubernetes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Unit tests and manifests
+        run: |
+          python3 -m unittest discover -s tests -v
+          kubectl kustomize k8s > /tmp/manifests.yaml
+      - name: Build CPU and downloader images
+        run: |
+          docker build -t llm-cpu:0.1.0 .
+          docker build -f Dockerfile.init -t llm-downloader:0.1.0 .
+          docker run --rm --entrypoint id llm-cpu:0.1.0
+          docker run --rm --entrypoint id llm-downloader:0.1.0
+      - name: Create Kubernetes cluster
+        run: |
+          go install sigs.k8s.io/kind@v0.30.0
+          "$(go env GOPATH)/bin/kind" create cluster --name llm
+          "$(go env GOPATH)/bin/kind" load docker-image --name llm llm-cpu:0.1.0 llm-downloader:0.1.0
+          kubectl apply -f k8s/namespace.yaml
+          export API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$API_TOKEN"
+          echo "API_TOKEN=$API_TOKEN" >> "$GITHUB_ENV"
+          HF_TOKEN='' python3 scripts/create_secret.py
+          kubectl apply -k k8s
+          kubectl -n llm-cpu rollout status deployment/llm --timeout=900s
+      - name: Auth privacy and warm offline restart
+        run: |
+          kubectl -n llm-cpu port-forward svc/llm 8000:8000 > /tmp/port-forward.log 2>&1 &
+          sleep 3
+          python3 scripts/smoke.py
+          kubectl -n llm-cpu rollout restart deployment/llm
+          kubectl -n llm-cpu rollout status deployment/llm --timeout=900s
+          kubectl -n llm-cpu logs deployment/llm -c download-model | grep -q model_cache_hit
+          kubectl -n llm-cpu exec deployment/llm -c vllm -- python -c "import torch; from vllm.platforms import current_platform; assert torch.version.cuda is None and current_platform.is_cpu()"
+      - name: Benchmark
+        run: |
+          kubectl -n llm-cpu port-forward svc/llm 8000:8000 > /tmp/port-forward-2.log 2>&1 &
+          sleep 3
+          mkdir -p results
+          lscpu > results/cpu.txt
+          kubectl version -o json > results/kubernetes.json
+          python3 scripts/benchmark.py | tee results/table.md
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n llm-cpu get pods,pvc
+          kubectl -n llm-cpu describe pods
+          kubectl -n llm-cpu logs deployment/llm -c vllm --tail=100 || true
+          kubectl -n llm-cpu logs deployment/llm -c download-model --tail=20 || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: cpu-verification
+          path: results/

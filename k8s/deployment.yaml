@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llm
+  template:
+    metadata:
+      labels:
+        app: llm
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: download-model
+          image: llm-downloader:0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODEL_ID
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: MODEL_ID}
+            - name: MODEL_REVISION
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: MODEL_REVISION}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef: {name: llm-secrets, key: hf-token}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: vllm
+          image: llm-cpu:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8000}
+          env:
+            - name: MODEL_REVISION
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: MODEL_REVISION}
+            - name: VLLM_CPU_KVCACHE_SPACE
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: VLLM_CPU_KVCACHE_SPACE}
+            - name: VLLM_CPU_OMP_THREADS_BIND
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: VLLM_CPU_OMP_THREADS_BIND}
+            - name: OMP_NUM_THREADS
+              valueFrom:
+                configMapKeyRef: {name: llm-config, key: OMP_NUM_THREADS}
+            - name: VLLM_API_KEY
+              valueFrom:
+                secretKeyRef: {name: llm-secrets, key: api-token}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: "2", memory: 4Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: model-cache}
+        - name: config
+          configMap: {name: llm-config, items: [{key: server.json, path: server.json}]}
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 1Gi}
