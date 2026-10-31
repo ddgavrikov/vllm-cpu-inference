@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import sys
@@ -32,6 +33,8 @@ def command(config, model_path):
 def forward(stream):
     for line in stream:
         try:
+            # vLLM decorates writes with a process prefix, including custom JSON logs.
+            line = re.sub(r"^\([A-Za-z0-9_:-]+ pid=\d+\) ", "", line)
             event = safe_event(json.loads(line))
             if event:
                 print(json.dumps(event, allow_nan=False), flush=True)

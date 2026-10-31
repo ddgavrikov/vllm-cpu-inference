@@ -1,5 +1,4 @@
 """Atomic, revision-pinned HF download; warm restarts do not import HF or use network."""
-import hashlib
 import json
 import os
 from pathlib import Path

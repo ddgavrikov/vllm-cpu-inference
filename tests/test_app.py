@@ -36,6 +36,12 @@ class PrivacyTests(unittest.TestCase):
         for elapsed in [float("nan"), float("inf"), -1]:
             self.assertIsNone(safe_event({"event": "inference_request", "request_id": "00000000-0000-0000-0000-000000000000", "status": 200, "elapsed_ms": elapsed}))
 
+    def test_decorated_vllm_logs(self):
+        out = io.StringIO()
+        with patch("sys.stdout", out):
+            forward(io.StringIO('(APIServer pid=123) {"event":"runtime_log","level":"INFO"}\n'))
+        self.assertEqual(json.loads(out.getvalue())["event"], "runtime_log")
+
     def test_streaming_middleware_success_and_failure(self):
         async def run(fail):
             sent = []
