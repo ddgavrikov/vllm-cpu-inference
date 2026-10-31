@@ -1,4 +1,3 @@
-"""Create a real Kubernetes Secret through stdin; never write secrets to disk/argv."""
 import base64
 import getpass
 import json

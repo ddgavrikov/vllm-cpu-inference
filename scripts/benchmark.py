@@ -1,4 +1,3 @@
-"""Streaming benchmark with measured server token counts; stores no prompt/response."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -49,7 +48,7 @@ def run(base, token, count, concurrency):
     rows = []
     for name, prompt in [("short", "Count from one to thirty."),
                          ("long", "Read the following notes. " + "A data pipeline validates records before storage. " * 120 + " Summarize the notes.")]:
-        request(base, token, prompt)  # warmup excluded, one per scenario
+        request(base, token, prompt)
         start = time.perf_counter()
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             samples = list(pool.map(lambda _: request(base, token, prompt), range(count)))

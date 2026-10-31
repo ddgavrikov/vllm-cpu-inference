@@ -1,4 +1,3 @@
-"""Supervisor: only strictly reconstructed structured events reach stdout/stderr."""
 import json
 import os
 from pathlib import Path
@@ -33,13 +32,13 @@ def command(config, model_path):
 def forward(stream):
     for line in stream:
         try:
-            # vLLM decorates writes with a process prefix, including custom JSON logs.
+
             line = re.sub(r"^\([A-Za-z0-9_:-]+ pid=\d+\) ", "", line)
             event = safe_event(json.loads(line))
             if event:
                 print(json.dumps(event, allow_nan=False), flush=True)
         except (ValueError, TypeError):
-            pass  # Includes native writes and traceback lines; never echo their text.
+            pass
 
 
 def main():

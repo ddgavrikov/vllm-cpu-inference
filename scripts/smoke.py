@@ -1,4 +1,3 @@
-"""Live endpoint tests; assert API auth, malformed input and no content in pod logs."""
 import json
 import os
 import subprocess

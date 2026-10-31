@@ -36,6 +36,17 @@ class PrivacyTests(unittest.TestCase):
         for elapsed in [float("nan"), float("inf"), -1]:
             self.assertIsNone(safe_event({"event": "inference_request", "request_id": "00000000-0000-0000-0000-000000000000", "status": 200, "elapsed_ms": elapsed}))
 
+    def test_malformed_events_do_not_stop_log_forwarding(self):
+        lines = io.StringIO('\n'.join([
+            json.dumps({"event": "inference_request", "request_id": 42, "status": 200, "elapsed_ms": 1}),
+            json.dumps({"event": "runtime_log", "level": []}),
+            json.dumps({"event": "runtime_log", "level": "INFO"}),
+        ]))
+        out = io.StringIO()
+        with patch("sys.stdout", out):
+            forward(lines)
+        self.assertEqual(json.loads(out.getvalue()), {"event": "runtime_log", "level": "INFO"})
+
     def test_decorated_vllm_logs(self):
         out = io.StringIO()
         with patch("sys.stdout", out):
@@ -72,6 +83,20 @@ class PrivacyTests(unittest.TestCase):
 
 
 class CacheTests(unittest.TestCase):
+    def test_interrupted_download_is_not_a_cache_hit(self):
+        revision = "b" * 40
+        def interrupted(**kwargs):
+            path = Path(kwargs["local_dir"])
+            path.mkdir()
+            (path / "config.json").write_text("{}")
+            raise ConnectionError("Download interrupted")
+        modules = {} if sys.platform != "win32" else {"fcntl": types.SimpleNamespace(LOCK_EX=2, flock=lambda *a: None)}
+        with tempfile.TemporaryDirectory() as temp, patch.dict(sys.modules, modules):
+            with self.assertRaises(ConnectionError):
+                download(temp, "test/model", revision, snapshot=interrupted)
+            self.assertFalse((Path(temp) / revision).exists())
+            self.assertFalse(valid_cache(Path(temp) / (revision + ".partial"), "test/model", revision))
+
     def test_cold_warm_corrupt_and_partial(self):
         calls = []
         def snapshot(**kwargs):
@@ -81,7 +106,7 @@ class CacheTests(unittest.TestCase):
             (path / "config.json").write_text("{}")
             (path / "model.safetensors").write_bytes(b"test weights")
         revision = "a" * 40
-        # On Windows only the OS locking primitive is stubbed; Linux CI tests real flock.
+
         modules = {} if sys.platform != "win32" else {"fcntl": types.SimpleNamespace(LOCK_EX=2, LOCK_UN=8, flock=lambda *a: None)}
         with tempfile.TemporaryDirectory() as temp, patch.dict(sys.modules, modules):
             target = download(temp, "test/model", revision, snapshot=snapshot)

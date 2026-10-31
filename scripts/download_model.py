@@ -1,4 +1,3 @@
-"""Atomic, revision-pinned HF download; warm restarts do not import HF or use network."""
 import json
 import os
 from pathlib import Path
@@ -25,7 +24,7 @@ def download(root, repo, revision, token=None, snapshot=None):
         raise ValueError("Use an immutable 40-character HF commit")
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
-    # Linux initContainer; only one writer even if manually scaled.
+
     import fcntl
     with (root / ".download.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -42,7 +41,7 @@ def download(root, repo, revision, token=None, snapshot=None):
                  ignore_patterns=["pytorch_model*", "*.bin", "*.pt", "*.h5"])
         if not (staging / "config.json").is_file() or not any(staging.glob("*.safetensors")):
             raise ValueError("Required model files missing")
-        # HF's download metadata is not needed for serving.
+
         shutil.rmtree(staging / ".cache", ignore_errors=True)
         files = [{"path": str(p.relative_to(staging)), "size": p.stat().st_size}
                  for p in sorted(staging.rglob("*")) if p.is_file() and p.name != "complete.json"]
@@ -58,6 +57,6 @@ if __name__ == "__main__":
     try:
         download(os.getenv("MODEL_ROOT", "/models"), os.environ["MODEL_ID"], os.environ["MODEL_REVISION"], os.getenv("HF_TOKEN") or None)
     except Exception:
-        # HF exceptions can contain tokens/URLs; deliberately don't log them.
+
         print('{"event":"model_download_failed"}', flush=True)
         raise SystemExit(1)

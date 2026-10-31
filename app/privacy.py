@@ -1,4 +1,3 @@
-"""No message text, exception text, URL, headers or client-supplied IDs in logs."""
 import json
 import logging
 import time
@@ -11,10 +10,12 @@ def safe_event(value):
     event = value.get("event")
     if event == "runtime_log":
         level = value.get("level")
-        return {"event": event, "level": level} if level in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"} else None
+        return {"event": event, "level": level} if isinstance(level, str) and level in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"} else None
     if event == "inference_request":
-        # Never accept arbitrary strings, even from a log record's extra fields.
+
         try:
+            if not isinstance(value["request_id"], str):
+                return None
             request_id = str(uuid.UUID(value["request_id"]))
             status = int(value["status"])
             elapsed = float(value["elapsed_ms"])
@@ -29,12 +30,11 @@ def safe_event(value):
 class PrivacyFormatter(logging.Formatter):
     def format(self, record):
         event = safe_event(getattr(record, "audit_event", None))
-        # Intentionally don't call getMessage(), formatException() or formatStack().
+
         return json.dumps(event or {"event": "runtime_log", "level": record.levelname}, allow_nan=False)
 
 
 class AuditMiddleware:
-    """Pure ASGI middleware: measures complete streams without buffering content."""
     def __init__(self, app):
         self.app = app
 
