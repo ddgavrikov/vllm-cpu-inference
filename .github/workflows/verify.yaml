@@ -8,6 +8,9 @@ jobs:
   cpu-kubernetes:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Unit tests and manifests
@@ -22,6 +25,10 @@ jobs:
           docker run --rm --entrypoint id llm-downloader:0.1.0
       - name: Create Kubernetes cluster
         run: |
+          curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl
+          curl -fsSLo /tmp/kubectl.sha256 https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl.sha256
+          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
           go install sigs.k8s.io/kind@v0.30.0
           "$(go env GOPATH)/bin/kind" create cluster --name llm
           "$(go env GOPATH)/bin/kind" load docker-image --name llm llm-cpu:0.1.0 llm-downloader:0.1.0
@@ -35,8 +42,12 @@ jobs:
       - name: Auth privacy and warm offline restart
         run: |
           kubectl -n llm-cpu port-forward svc/llm 8000:8000 > /tmp/port-forward.log 2>&1 &
-          sleep 3
+          forward_pid=$!
+          trap 'kill "$forward_pid" 2>/dev/null || true' EXIT
+          curl --retry 30 --retry-all-errors --retry-delay 1 --fail --max-time 2 --silent http://127.0.0.1:8000/health
           python3 scripts/smoke.py
+          kill "$forward_pid"
+          wait "$forward_pid" || true
           kubectl -n llm-cpu rollout restart deployment/llm
           kubectl -n llm-cpu rollout status deployment/llm --timeout=900s
           kubectl -n llm-cpu logs deployment/llm -c download-model | grep -q model_cache_hit
@@ -44,11 +55,16 @@ jobs:
       - name: Benchmark
         run: |
           kubectl -n llm-cpu port-forward svc/llm 8000:8000 > /tmp/port-forward-2.log 2>&1 &
-          sleep 3
+          forward_pid=$!
+          trap 'kill "$forward_pid" 2>/dev/null || true' EXIT
+          curl --retry 30 --retry-all-errors --retry-delay 1 --fail --max-time 2 --silent http://127.0.0.1:8000/health
+          python3 scripts/smoke.py
           mkdir -p results
           lscpu > results/cpu.txt
           kubectl version -o json > results/kubernetes.json
-          python3 scripts/benchmark.py | tee results/table.md
+          python3 scripts/benchmark.py > results/table.md
+          test -s results/benchmark.json
+          cat results/table.md
       - name: Diagnostics
         if: failure()
         run: |
@@ -56,6 +72,7 @@ jobs:
           kubectl -n llm-cpu describe pods
           kubectl -n llm-cpu logs deployment/llm -c vllm --tail=100 || true
           kubectl -n llm-cpu logs deployment/llm -c download-model --tail=20 || true
+          cat /tmp/port-forward*.log || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
