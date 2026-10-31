@@ -1,11 +1,11 @@
 {
   "date": "2026-10-31",
-  "code_commit": "edf4d274121c154aaced4657efca156f1be4c0b4",
-  "run_url": "https://github.com/ddgavrikov/vllm-cpu-inference/actions/runs/41194141326",
+  "code_commit": "ac03afe8d810c97440dcf840de4c4816f7a87e49",
+  "run_url": "https://github.com/ddgavrikov/vllm-cpu-inference/actions/runs/41199701331",
   "environment": "GitHub Actions ubuntu-24.04, kind Kubernetes",
   "cpu": "AMD EPYC 9V74 80-Core Processor",
   "kubernetes": "v1.34.0",
-  "unit_tests_passed": 8,
+  "unit_tests_passed": 13,
   "checks": {
     "rootless_images": true,
     "cpu_backend": true,
