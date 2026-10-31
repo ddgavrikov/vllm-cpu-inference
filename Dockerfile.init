@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp HF_HOME=/tmp/hf \
 RUN groupadd -g 10001 app && useradd -u 10001 -g 10001 -M app
 WORKDIR /app
 COPY requirements-init.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir --require-hashes -r requirements.txt && python -m pip check
+RUN python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements.txt && python -m pip check
 COPY scripts/download_model.py /app/download_model.py
 USER 10001:10001
 ENTRYPOINT ["python", "/app/download_model.py"]
